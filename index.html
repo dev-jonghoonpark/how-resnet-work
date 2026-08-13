@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ResNet은 어떻게 동작하는가 — 인터랙티브 가이드</title>
+<meta name="description" content="Deep Residual Learning(ResNet)의 동작 원리를 브라우저에서 직접 실험하며 배우는 인터랙티브 교육 자료">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔁</text></svg>">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<nav class="topnav">
+  <div class="topnav-inner">
+    <a class="brand" href="#top">ResNet<span class="brand-accent">·</span>동작원리</a>
+    <div class="navlinks">
+      <a href="#s1">문제</a>
+      <a href="#s2">핵심 아이디어</a>
+      <a href="#s3">신호 전파</a>
+      <a href="#s4">학습 실험</a>
+      <a href="#s5">아키텍처</a>
+      <a href="#s7">ResNet v2</a>
+      <a href="#s8">구현</a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero" id="top">
+  <p class="hero-kicker">Deep Residual Learning · 인터랙티브 가이드</p>
+  <h1>ResNet은 어떻게 동작하는가</h1>
+  <p class="hero-lede">
+    2015년, 층을 깊게 쌓을수록 오히려 성능이 나빠지던 시대에
+    단 하나의 수식이 판을 바꿨습니다.
+  </p>
+  <div class="hero-formula" aria-label="y = F(x) + x">
+    <span class="hf-y">y</span> <span class="hf-eq">=</span>
+    <span class="hf-f">F(x)</span> <span class="hf-plus">+</span>
+    <span class="hf-x">x</span>
+  </div>
+  <p class="hero-sub">
+    이 페이지는 원 논문 <em>Deep Residual Learning for Image Recognition</em>(He et al., 2015)과
+    후속 논문 <em>Identity Mappings in Deep Residual Networks</em>(2016)를 바탕으로,
+    잔차 연결(residual connection)이 <strong>실제로 어떻게 동작하는지</strong>
+    브라우저 안에서 직접 시뮬레이션하며 배우는 교육 자료입니다.
+    모든 실험은 여러분의 브라우저에서 JavaScript로 실시간 계산됩니다.
+  </p>
+</header>
+
+<main>
+
+<!-- ============================================================ -->
+<section id="s1">
+  <h2><span class="secno">1</span>깊이의 역설 — 층을 쌓을수록 나빠진다?</h2>
+  <p>
+    AlexNet(2012)은 8층, VGG(2014)는 19층, GoogLeNet(2014)은 22층.
+    깊이가 곧 성능이던 시절, 자연스러운 질문이 나옵니다.
+    <em>“그냥 층을 더 쌓으면 더 좋아지지 않을까?”</em>
+  </p>
+  <p>
+    ResNet 저자들은 CIFAR-10에서 잔차 연결이 없는 <strong>plain 네트워크</strong>를
+    20층과 56층으로 쌓아 비교했습니다. 결과는 반대였습니다 —
+    <strong>56층 네트워크가 20층보다 훈련 오류(training error)조차 더 높았습니다.</strong>
+  </p>
+
+  <figure class="viz-card">
+    <figcaption>
+      <strong>Plain 네트워크의 훈련 오류 (CIFAR-10)</strong>
+      <span class="cap-note">원 논문 Figure 1을 재구성한 근사 곡선 · 마우스를 올려 값 확인</span>
+    </figcaption>
+    <div id="chart-degradation" class="chart chart-line" role="img" aria-label="20층과 56층 plain 네트워크의 훈련 오류 비교. 56층이 전 구간에서 더 높다."></div>
+  </figure>
+
+  <p>
+    이것이 <strong>열화 문제(degradation problem)</strong>입니다. 핵심은 이 현상이
+    <strong>과적합(overfitting)이 아니라는 점</strong>입니다 — 테스트 오류가 아니라
+    훈련 오류 자체가 높으므로, 모델이 데이터를 “외우지 못하는” 것입니다.
+  </p>
+  <div class="callout">
+    <p class="callout-title">왜 이상한가: 이론상으로는 깊은 쪽이 절대 지면 안 됩니다</p>
+    <p>
+      20층 모델이 있다면, 그 위에 36개의 <strong>항등(identity) 층</strong>
+      — 입력을 그대로 통과시키는 층 — 을 얹어 56층 모델을 만들 수 있습니다.
+      이렇게 “만들어진 해(solution by construction)”는 20층과 정확히 같은 성능을 냅니다.
+      즉 깊은 모델의 해공간은 얕은 모델을 포함합니다.
+      그런데도 SGD는 이런 해를 <em>찾지 못합니다</em>.
+      결론: 이것은 표현력의 문제가 아니라 <strong>최적화의 문제</strong>입니다.
+      여러 겹의 비선형 층으로 항등 사상을 근사하는 것이 생각보다 어렵기 때문입니다.
+    </p>
+  </div>
+  <p>
+    ImageNet에서도 같은 현상이 재현됩니다. 잔차 연결 유무만 다르고 나머지는 동일한
+    네트워크의 검증 오류(top-1, 10-crop)입니다.
+  </p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>깊이</th><th>plain</th><th>ResNet</th><th>효과</th></tr></thead>
+      <tbody>
+        <tr><td>18층</td><td>27.94%</td><td>27.88%</td><td>비슷 (얕으면 plain도 학습됨)</td></tr>
+        <tr><td>34층</td><td>28.54% <span class="worse">▲ 더 깊은데 더 나쁨</span></td><td><strong>25.03%</strong></td><td>깊이가 이득으로 전환</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="s2">
+  <h2><span class="secno">2</span>핵심 아이디어 — 목표 대신 “차이”를 학습한다</h2>
+  <p>
+    어떤 층 묶음이 배워야 할 이상적인 변환을 <em>H(x)</em>라고 합시다.
+    ResNet의 발상은 층이 <em>H(x)</em>를 통째로 배우게 하지 말고,
+    입력과의 <strong>차이(잔차, residual)</strong>만 배우게 하자는 것입니다.
+  </p>
+  <div class="formula-block">
+    <div class="fline"><em>F(x)</em> := <em>H(x)</em> − <em>x</em> <span class="fnote">← 층이 실제로 학습하는 것 (잔차)</span></div>
+    <div class="fline"><em>y</em> = <em>F(x)</em> + <em>x</em> <span class="fnote">← 출력 = 잔차 + 입력 (shortcut으로 구현)</span></div>
+  </div>
+  <p>
+    두 형태는 수학적으로 동등하지만 <strong>배우기 쉬운 정도가 다릅니다</strong>.
+    만약 항등 사상이 최적에 가깝다면 — 깊은 네트워크의 많은 층이 실제로 그렇습니다 —
+    plain 층은 여러 비선형 층으로 <em>H(x) ≈ x</em>를 힘겹게 근사해야 하지만,
+    잔차 층은 그냥 <strong>가중치를 0으로 밀어 <em>F(x) ≈ 0</em></strong>을 만들면 됩니다.
+    0을 배우는 건 쉽습니다.
+  </p>
+  <div class="callout analogy">
+    <p class="callout-title">비유: 전화 게임(말 전달하기)</p>
+    <p>
+      여러 사람을 거쳐 귓속말로 문장을 전달하면 끝에 가서는 원문이 뭉개집니다.
+      층이 깊은 plain 네트워크가 정확히 이 상황입니다.
+      잔차 연결은 <strong>중간 사람들을 건너뛰어 쪽지를 직접 전달하는 지름길</strong>입니다.
+      각 사람(층)은 이제 문장 전체를 다시 말할 필요 없이,
+      쪽지에 <em>덧붙일 수정 사항</em>만 말하면 됩니다.
+    </p>
+  </div>
+
+  <figure class="viz-card">
+    <figcaption>
+      <strong>잔차 블록 해부</strong>
+      <span class="cap-note">데이터가 두 갈래 경로로 흐르는 과정 · 버튼으로 모드를 바꿔보세요</span>
+    </figcaption>
+    <div class="controls" role="group" aria-label="블록 다이어그램 컨트롤">
+      <button class="btn seg active" id="blk-btn-res">잔차 블록</button>
+      <button class="btn seg" id="blk-btn-plain">plain 블록 (skip 제거)</button>
+      <span class="ctrl-sep"></span>
+      <button class="btn seg active" id="blk-btn-fwd">순전파 ▶</button>
+      <button class="btn seg" id="blk-btn-bwd">◀ 역전파</button>
+    </div>
+    <div id="block-anim" class="block-anim"></div>
+    <p class="viz-note" id="block-anim-note"></p>
+  </figure>
+
+  <p>
+    구현은 놀랄 만큼 단순합니다. shortcut은 <strong>파라미터도, 추가 연산도 거의 없는
+    단순 덧셈</strong>입니다(element-wise addition). 그래서 plain 34층과 ResNet 34층은
+    파라미터 수와 FLOPs가 사실상 동일합니다 — 성능 차이는 순수하게
+    <em>최적화가 쉬워진 것</em>에서 옵니다.
+  </p>
+</section>
+
+<!-- ============================================================ -->
+<section id="s3">
+  <h2><span class="secno">3</span>신호 전파 시뮬레이터 — 곱셈의 세계 vs 덧셈의 세계</h2>
+  <p>
+    잔차 연결이 왜 최적화를 쉽게 만드는지는 후속 논문
+    <em>Identity Mappings in Deep Residual Networks</em>가 수식으로 보여줍니다.
+    shortcut이 순수한 항등이면, 잔차 블록을 재귀적으로 풀었을 때:
+  </p>
+  <div class="formula-block">
+    <div class="fline">
+      <em>x<sub>L</sub></em> = <em>x<sub>l</sub></em> + <span class="fsum">Σ</span> <em>F(x<sub>i</sub>)</em>
+      <span class="fnote">← 순전파: 어떤 깊은 층도 얕은 층 + <strong>잔차의 합</strong> (plain은 가중치의 <strong>곱</strong> Π W<sub>i</sub>x)</span>
+    </div>
+    <div class="fline">
+      <span class="fpart">∂E/∂x<sub>l</sub></span> = <span class="fpart">∂E/∂x<sub>L</sub></span> · ( <strong class="hl-one">1</strong> + ∂/∂x<sub>l</sub> Σ <em>F</em> )
+      <span class="fnote">← 역전파: <strong class="hl-one">1</strong> 덕분에 그래디언트가 어떤 층에도 <strong>직통으로</strong> 전달</span>
+    </div>
+  </div>
+  <p>
+    plain 네트워크에서 신호와 그래디언트는 층마다 가중치가 <strong>곱해지며</strong> 전달됩니다.
+    곱이 1보다 조금만 작아도 지수적으로 소멸하고, 조금만 커도 폭발합니다.
+    잔차 네트워크는 <strong>더하기</strong>의 세계라 항상 “1”이라는 안전한 직통 경로가 남습니다.
+    아래에서 무작위 가중치를 가진 네트워크를 실제로 만들어 확인해 보세요.
+  </p>
+
+  <figure class="viz-card">
+    <figcaption>
+      <strong>층별 그래디언트 크기 (실시간 계산)</strong>
+      <span class="cap-note">폭 32의 무작위 네트워크를 생성해 역전파를 실제로 수행한 결과 · y축은 로그 스케일</span>
+    </figcaption>
+    <div class="controls">
+      <label class="ctrl">깊이 <output id="prop-depth-out">32</output>층
+        <input type="range" id="prop-depth" min="4" max="64" step="2" value="32">
+      </label>
+      <label class="ctrl">가중치 초기화 배율 <output id="prop-gain-out">1.00</output>×He
+        <input type="range" id="prop-gain" min="0.70" max="1.30" step="0.05" value="1.00">
+      </label>
+      <button class="btn" id="prop-rerun">가중치 다시 뽑기 ↻</button>
+    </div>
+    <div id="chart-prop-bwd" class="chart chart-line" role="img" aria-label="층별 그래디언트 RMS. plain은 지수적으로 변하고 residual은 1 근처를 유지한다."></div>
+    <p class="viz-note">
+      <strong>관찰:</strong> 초기화 배율을 1.0에서 조금만 내려보세요(예: 0.85).
+      plain(주황)의 그래디언트는 층마다 가중치가 곱해지므로 입력 쪽으로 갈수록
+      <strong>지수적으로 소멸</strong>하고, 배율을 올리면 반대로 폭발합니다 —
+      정확히 맞는 초기화(1.0×)에서만 아슬아슬하게 유지되는 “외줄타기”입니다.
+      residual(파랑)은 어떤 배율에서도 “1” 직통 경로 덕분에 그래디언트가 1 아래로
+      소멸하지 않습니다. (시뮬레이션은 실제 ResNet의 BN처럼 잔차 브랜치 입력을
+      정규화합니다. residual이 입력 쪽에서 완만하게 커지는 것은 여러 블록의 잔차
+      그래디언트가 계속 <em>더해지기</em> 때문 — 곱셈이 아닌 덧셈이라 폭발하지 않습니다.)
+    </p>
+  </figure>
+
+  <figure class="viz-card">
+    <figcaption>
+      <strong>shortcut을 λ배로 스케일하면? — identity가 유일한 정답인 이유</strong>
+      <span class="cap-note">x<sub>l+1</sub> = λ·x<sub>l</sub> + F(x<sub>l</sub>) 로 바꿔 실험 (Identity Mappings 논문 §3)</span>
+    </figcaption>
+    <div class="controls">
+      <label class="ctrl">shortcut 배율 λ = <output id="lam-out">1.00</output>
+        <input type="range" id="lam" min="0.80" max="1.15" step="0.05" value="1.00">
+      </label>
+    </div>
+    <div id="chart-lambda" class="chart chart-line" role="img" aria-label="shortcut 배율 λ에 따른 직통 경로 기여도. λ가 1이 아니면 지수적으로 소멸하거나 폭발한다."></div>
+    <p class="viz-note">
+      shortcut 경로의 기여는 λ의 <strong>거듭제곱</strong>(Π λ = λ<sup>L</sup>)으로 쌓입니다.
+      λ = 0.95처럼 살짝만 줄여도 100층 뒤에는 0.6%만 남고, 1.05면 130배로 폭발합니다.
+      실제로 논문에서 λ = 0.5로 스케일한 110층 ResNet은 오류가 6.61% → 12.35%로 악화됐고,
+      shortcut에 게이트·1×1 conv·dropout을 끼워 넣은 변형은 모두 원본보다 나빴습니다.
+      <strong>“깨끗한” 항등 shortcut이 유일하게 안전합니다.</strong>
+    </p>
+  </figure>
+</section>
+
+<!-- ============================================================ -->
+<section id="s4">
+  <h2><span class="secno">4</span>미니 학습 실험 — 같은 깊이, 다른 운명</h2>
+  <p>
+    이론은 충분합니다. 이제 <strong>실제로 두 네트워크를 훈련</strong>시켜 봅시다.
+    나선형 2클래스 데이터를 분류하는 완전연결 네트워크(폭 12)를,
+    <strong>층수·파라미터 수가 동일한</strong> plain 버전과 residual 버전으로 만들어
+    같은 데이터·같은 학습률로 동시에 훈련합니다. 전부 지금 여러분의 브라우저에서 계산됩니다.
+  </p>
+
+  <figure class="viz-card">
+    <figcaption>
+      <strong>plain vs residual 실시간 훈련</strong>
+      <span class="cap-note">동일 조건 · SGD(momentum) · 손실 y축은 로그 스케일</span>
+    </figcaption>
+    <div class="controls">
+      <span class="ctrl-label">은닉층 깊이:</span>
+      <button class="btn seg" data-depth="4">4층 (얕음)</button>
+      <button class="btn seg active" data-depth="20">20층 (깊음)</button>
+      <button class="btn seg" data-depth="48">48층 (매우 깊음)</button>
+      <button class="btn primary" id="train-btn">▶ 훈련 시작</button>
+    </div>
+    <div id="chart-train" class="chart chart-line" role="img" aria-label="훈련 손실 곡선: plain 대 residual"></div>
+    <div class="train-panels">
+      <div class="train-panel">
+        <div class="tp-head"><span class="dot dot-plain"></span>plain <span class="tp-acc" id="acc-plain">—</span></div>
+        <canvas id="canvas-plain" width="240" height="240" aria-label="plain 네트워크의 결정 경계"></canvas>
+      </div>
+      <div class="train-panel">
+        <div class="tp-head"><span class="dot dot-res"></span>residual <span class="tp-acc" id="acc-res">—</span></div>
+        <canvas id="canvas-res" width="240" height="240" aria-label="residual 네트워크의 결정 경계"></canvas>
+      </div>
+    </div>
+    <p class="viz-note">
+      <strong>사용법:</strong> 깊이를 고르고 훈련을 시작하세요. 배경색은 각 네트워크가 학습한
+      결정 경계입니다. <strong>4층·20층</strong>에서는 대개 둘 다 학습에 성공합니다
+      (얕으면 plain도 문제없음 — 1절에서 plain-18이 ResNet-18과 비슷했던 것과 같은 이치입니다.
+      다만 plain 쪽이 더 느리거나 불안정한 경우가 많습니다).
+      <strong>48층</strong>을 눌러보세요 — plain은 대개 정확도 50%(동전 던지기 수준)에서
+      전혀 벗어나지 못하는 반면, residual은 같은 깊이에서도 문제없이 학습됩니다.
+      무작위 초기화라 실행마다 결과가 조금씩 다르니 여러 번 실행해 보세요. (48층은 계산량이 많아 20초쯤 걸립니다.)
+    </p>
+  </figure>
+</section>
+
+<!-- ============================================================ -->
+<section id="s5">
+  <h2><span class="secno">5</span>전체 아키텍처 — 블록을 쌓아 네트워크 만들기</h2>
+  <p>
+    ResNet은 하나의 잔차 블록을 <strong>모듈처럼 반복해 쌓는</strong> 구조입니다.
+    ImageNet용 ResNet은 공통적으로: 7×7 conv(stride 2) → 3×3 max pool →
+    <strong>4개의 스테이지</strong>(conv2_x ~ conv5_x) → global average pooling → 1000-way fc.
+    스테이지가 바뀔 때마다 해상도는 절반, 채널은 2배가 됩니다.
+  </p>
+  <figure class="viz-card">
+    <figcaption>
+      <strong>아키텍처 탐색기</strong>
+      <span class="cap-note">모델을 선택하고 블록에 마우스를 올려 구성 확인 · ⤓ 표시는 stride-2 다운샘플 블록(점선 projection shortcut)</span>
+    </figcaption>
+    <div class="controls" id="arch-tabs" role="tablist">
+      <button class="btn seg" data-model="18">ResNet-18</button>
+      <button class="btn seg active" data-model="34">ResNet-34</button>
+      <button class="btn seg" data-model="50">ResNet-50</button>
+      <button class="btn seg" data-model="101">ResNet-101</button>
+      <button class="btn seg" data-model="152">ResNet-152</button>
+    </div>
+    <div id="arch-view" class="arch-view"></div>
+    <div id="arch-stats" class="arch-stats"></div>
+  </figure>
+  <p>
+    차원이 바뀌는 경계(각 스테이지의 첫 블록)에서는 shortcut도 차원을 맞춰야 합니다.
+    논문은 1×1 conv로 차원을 사상하는 <strong>projection shortcut</strong>(option B)을
+    차원 증가 시에만 쓰고, 나머지는 전부 파라미터 없는 identity를 사용합니다 —
+    실험 결과 projection을 늘려도 이득이 미미했고, identity가 병목 구조의 효율에 필수적이기 때문입니다.
+  </p>
+
+  <h3>Basic 블록 vs Bottleneck 블록</h3>
+  <p>
+    50층 이상에서는 연산량을 아끼기 위해 <strong>병목(bottleneck) 블록</strong>을 씁니다.
+    1×1 conv로 채널을 압축(256→64)하고, 그 좁은 공간에서 3×3 conv를 수행한 뒤,
+    다시 1×1 conv로 복원(64→256)합니다. 비싼 3×3 연산이 좁은 차원에서만 일어나므로,
+    <strong>거의 같은 비용으로 층은 3개, 입출력 채널은 4배</strong>가 됩니다.
+  </p>
+  <figure class="viz-card">
+    <figcaption><strong>두 블록의 파라미터 비교</strong> <span class="cap-note">숫자에 마우스를 올려 계산식 확인</span></figcaption>
+    <div id="bottleneck-compare" class="bottleneck-compare"></div>
+    <p class="viz-note">
+      이 효율 덕분에 <strong>ResNet-152(11.3 GFLOPs)조차 VGG-19(19.6 GFLOPs)보다 가볍습니다.</strong>
+      8배 깊지만 연산량은 42% 줄었습니다.
+    </p>
+  </figure>
+
+  <figure class="viz-card">
+    <figcaption>
+      <strong>ImageNet 검증 오류 (top-5, 10-crop)</strong>
+      <span class="cap-note">원 논문 Table 3 · 낮을수록 좋음</span>
+    </figcaption>
+    <div id="chart-results" class="chart chart-bar" role="img" aria-label="모델별 top-5 오류 막대 차트. ResNet이 깊어질수록 오류가 감소한다."></div>
+    <p class="viz-note">
+      plain-34는 VGG-16보다도 나빴지만, 같은 구조에 shortcut만 더한 ResNet-34는 훌쩍 앞섭니다.
+      그리고 잔차 연결 덕분에 깊이를 152층까지 늘리는 것이 <em>계속 이득</em>이 됩니다.
+      최종적으로 ResNet 앙상블은 top-5 오류 <strong>3.57%</strong>로 ILSVRC 2015 분류 부문에서 우승했고,
+      검출·위치추정·세그멘테이션 부문까지 석권했습니다.
+    </p>
+  </figure>
+</section>
+
+<!-- ============================================================ -->
+<section id="s7">
+  <h2><span class="secno">6</span>ResNet v2 — “깨끗한” 지름길의 완성</h2>
+  <p>
+    원조 ResNet(v1)에도 옥의 티가 있었습니다. 덧셈 <em>뒤에</em> ReLU가 오기 때문에
+    shortcut 경로가 완전한 항등이 아니었던 것입니다. 1000층급 초심층에서는
+    이 작은 방해도 누적되어 문제가 됩니다.
+    후속 논문은 BN과 ReLU를 conv <strong>앞</strong>으로 옮긴
+    <strong>pre-activation 구조</strong>를 제안했습니다.
+  </p>
+  <div class="preact-compare">
+    <div class="preact-col">
+      <div class="pc-title">v1 · post-activation</div>
+      <div class="pc-stack">
+        <span class="pc-op conv">conv</span><span class="pc-op bn">BN</span><span class="pc-op relu">ReLU</span>
+        <span class="pc-op conv">conv</span><span class="pc-op bn">BN</span>
+        <span class="pc-op add">⊕ 덧셈</span><span class="pc-op relu warn">ReLU ← 덧셈 뒤에 있어 identity 경로를 방해</span>
+      </div>
+    </div>
+    <div class="preact-col">
+      <div class="pc-title">v2 · pre-activation</div>
+      <div class="pc-stack">
+        <span class="pc-op bn">BN</span><span class="pc-op relu">ReLU</span><span class="pc-op conv">conv</span>
+        <span class="pc-op bn">BN</span><span class="pc-op relu">ReLU</span><span class="pc-op conv">conv</span>
+        <span class="pc-op add good">⊕ 덧셈 — 뒤에 아무것도 없음: 완전한 identity 경로</span>
+      </div>
+    </div>
+  </div>
+  <p>
+    shortcut을 “더 똑똑하게” 만들려는 시도는 전부 실패했습니다.
+    110층 ResNet(CIFAR-10)으로 수행한 절제 실험(ablation):
+  </p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>shortcut 변형</th><th>테스트 오류</th><th>결과</th></tr></thead>
+      <tbody>
+        <tr class="row-best"><td>순수 identity (원본)</td><td><strong>6.61%</strong></td><td>기준</td></tr>
+        <tr><td>0.5배 상수 스케일</td><td>12.35%</td><td>크게 악화</td></tr>
+        <tr><td>게이트 (highway 스타일)</td><td>8.70%</td><td>악화</td></tr>
+        <tr><td>1×1 conv shortcut</td><td>12.22%</td><td>크게 악화</td></tr>
+        <tr><td>dropout shortcut</td><td>수렴 실패</td><td>실패</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>
+    pre-activation의 위력은 극단적 깊이에서 드러납니다.
+    <strong>1001층</strong> ResNet(CIFAR-10)에서 v1은 7.61%에 그쳤지만
+    v2는 <strong>4.92%</strong>를 달성하며 훨씬 쉽게 훈련됐습니다.
+    “깊이 자체는 더 이상 적이 아니다 — 최적화를 방해하지만 않는다면”이 증명된 순간입니다.
+  </p>
+  <div class="callout">
+    <p class="callout-title">한 걸음 더: ResNet은 사실 얕은 네트워크들의 앙상블처럼 동작한다</p>
+    <p>
+      후속 연구(Veit et al., 2016)에 따르면 잔차 연결이 만드는 수많은 지름길 덕분에,
+      n개 블록의 ResNet에는 입력에서 출력까지 2<sup>n</sup>개의 경로가 존재합니다.
+      그래디언트는 대부분 비교적 짧은 경로(110층 모델에서 약 10~34층짜리)를 타고 흐르고,
+      개별 블록 하나를 제거해도 성능이 거의 떨어지지 않습니다.
+      즉 1000층 ResNet은 “1000층짜리 사슬”이 아니라
+      <strong>겹쳐진 얕은 네트워크들의 거대한 앙상블</strong>에 가깝습니다.
+    </p>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="s8">
+  <h2><span class="secno">7</span>실제 구현 — PyTorch 코드로 확인하기</h2>
+  <p>
+    지금까지 본 모든 것이 실제 코드에서는 몇 줄로 표현됩니다. 아래는 사실상의 표준 구현인
+    <a href="https://github.com/pytorch/vision/blob/main/torchvision/models/resnet.py" target="_blank" rel="noopener">torchvision의 <code>resnet.py</code></a>
+    원본 코드입니다. 핵심은 <code>forward()</code>의 단 두 줄입니다.
+  </p>
+
+  <figure class="code-card">
+    <figcaption>BasicBlock — ResNet-18/34의 기본 블록 (2절의 다이어그램 그대로)</figcaption>
+<pre><code class="lang-py">class BasicBlock(nn.Module):
+    expansion: int = 1
+
+    def __init__(self, inplanes, planes, stride=1, downsample=None, ...):
+        super().__init__()
+        self.conv1 = conv3x3(inplanes, planes, stride)   # 3x3 conv
+        self.bn1 = norm_layer(planes)
+        self.relu = nn.ReLU(inplace=True)
+        self.conv2 = conv3x3(planes, planes)             # 3x3 conv
+        self.bn2 = norm_layer(planes)
+        self.downsample = downsample
+        self.stride = stride
+
+    def forward(self, x):
+        identity = x                  # ← 입력을 기억해 둔다 (shortcut)
+
+        out = self.conv1(x)           # ── 잔차 함수 F(x) 시작
+        out = self.bn1(out)
+        out = self.relu(out)
+        out = self.conv2(out)
+        out = self.bn2(out)           # ── F(x) 끝
+
+        if self.downsample is not None:
+            identity = self.downsample(x)   # 차원이 바뀌면 1x1 conv로 사상 (projection)
+
+        out += identity               # ★ y = F(x) + x  — ResNet의 전부
+        out = self.relu(out)          #   (v1: 덧셈 뒤 ReLU)
+        return out</code></pre>
+  </figure>
+
+  <figure class="code-card">
+    <figcaption>Bottleneck — ResNet-50/101/152의 병목 블록 (1×1 압축 → 3×3 → 1×1 복원)</figcaption>
+<pre><code class="lang-py">class Bottleneck(nn.Module):
+    expansion: int = 4                # 출력 채널 = planes × 4
+
+    def __init__(self, inplanes, planes, stride=1, downsample=None, ...):
+        super().__init__()
+        self.conv1 = conv1x1(inplanes, width)            # 1x1: 채널 압축 (256→64)
+        self.bn1 = norm_layer(width)
+        self.conv2 = conv3x3(width, width, stride, ...)  # 3x3: 좁은 공간에서 연산
+        self.bn2 = norm_layer(width)
+        self.conv3 = conv1x1(width, planes * self.expansion)  # 1x1: 복원 (64→256)
+        self.bn3 = norm_layer(planes * self.expansion)
+        ...
+
+    def forward(self, x):
+        identity = x
+        out = self.relu(self.bn1(self.conv1(x)))
+        out = self.relu(self.bn2(self.conv2(out)))
+        out = self.bn3(self.conv3(out))
+        if self.downsample is not None:
+            identity = self.downsample(x)
+        out += identity               # ★ 여기서도 핵심은 같은 한 줄
+        out = self.relu(out)
+        return out</code></pre>
+  </figure>
+
+  <figure class="code-card">
+    <figcaption>_make_layer — 블록을 쌓아 스테이지를 만드는 곳 (5절 탐색기의 코드 버전)</figcaption>
+<pre><code class="lang-py">def _make_layer(self, block, planes, blocks, stride=1):
+    downsample = None
+    # 스테이지 첫 블록: 해상도를 절반으로(stride 2), 채널이 달라지면
+    # shortcut에도 1x1 conv(projection)를 달아 차원을 맞춘다
+    if stride != 1 or self.inplanes != planes * block.expansion:
+        downsample = nn.Sequential(
+            conv1x1(self.inplanes, planes * block.expansion, stride),
+            norm_layer(planes * block.expansion),
+        )
+
+    layers = []
+    layers.append(block(self.inplanes, planes, stride, downsample, ...))
+    self.inplanes = planes * block.expansion
+    for _ in range(1, blocks):        # 나머지 블록은 전부 순수 identity shortcut
+        layers.append(block(self.inplanes, planes, ...))
+    return nn.Sequential(*layers)
+
+# resnet50 = ResNet(Bottleneck, [3, 4, 6, 3])   ← 스테이지별 블록 수가 모델을 결정
+# resnet101 = ResNet(Bottleneck, [3, 4, 23, 3])
+# resnet152 = ResNet(Bottleneck, [3, 8, 36, 3])</code></pre>
+  </figure>
+
+  <p>직접 써보는 건 세 줄이면 됩니다:</p>
+  <figure class="code-card">
+<pre><code class="lang-py">import torch, torchvision
+model = torchvision.models.resnet50(weights="IMAGENET1K_V2")  # 사전훈련 가중치
+model.eval()
+logits = model(torch.randn(1, 3, 224, 224))   # → [1, 1000]</code></pre>
+  </figure>
+
+  <div class="callout">
+    <p class="callout-title">참고할 만한 공개 구현체</p>
+    <ul>
+      <li><a href="https://github.com/pytorch/vision/blob/main/torchvision/models/resnet.py" target="_blank" rel="noopener">pytorch/vision — resnet.py</a> · 사실상 표준 PyTorch 구현 (위 코드의 출처)</li>
+      <li><a href="https://github.com/KaimingHe/deep-residual-networks" target="_blank" rel="noopener">KaimingHe/deep-residual-networks</a> · 저자 공식 릴리스 (Caffe 모델)</li>
+      <li><a href="https://github.com/KaimingHe/resnet-1k-layers" target="_blank" rel="noopener">KaimingHe/resnet-1k-layers</a> · ResNet v2(pre-activation) 1001층 공식 코드</li>
+      <li><a href="https://github.com/keras-team/keras/blob/master/keras/src/applications/resnet.py" target="_blank" rel="noopener">Keras Applications — resnet.py</a> · TensorFlow/Keras 구현</li>
+      <li><a href="https://github.com/huggingface/pytorch-image-models" target="_blank" rel="noopener">timm (pytorch-image-models)</a> · ResNet 변형 다수 + 현대적 훈련 레시피</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="s9">
+  <h2><span class="secno">8</span>정리 — 그리고 그 이후</h2>
+  <ul class="summary-list">
+    <li><strong>문제:</strong> plain 네트워크는 깊어지면 훈련 오류부터 나빠진다(열화 문제). 과적합이 아니라 최적화 실패다.</li>
+    <li><strong>해법:</strong> 층이 목표 <em>H(x)</em> 대신 잔차 <em>F(x) = H(x) − x</em>를 배우게 하고, 출력을 <em>F(x) + x</em>로 만든다. 항등이 최적에 가까우면 가중치를 0으로 밀기만 하면 된다.</li>
+    <li><strong>동작 원리:</strong> 순전파는 잔차들의 <strong>합</strong>, 역전파는 “1 + …” — 어떤 깊이에도 신호·그래디언트의 직통 경로가 보존된다. plain의 곱셈적 전파와의 근본적 차이.</li>
+    <li><strong>규칙:</strong> shortcut은 건드리지 마라. 스케일·게이트·conv·dropout 무엇을 끼워도 나빠진다. v2는 ReLU마저 conv 앞으로 옮겨 경로를 완전히 비웠고, 1001층 훈련에 성공했다.</li>
+    <li><strong>유산:</strong> 잔차 연결은 이후 사실상 모든 심층 모델 — DenseNet, EfficientNet, 그리고 Transformer(어텐션/FFN 블록마다 <code>x + Sublayer(x)</code>) — 의 기본 부품이 되었다.</li>
+  </ul>
+  <h3>이 자료가 참고한 문헌</h3>
+  <ol class="refs">
+    <li>He, Zhang, Ren, Sun. <em>Deep Residual Learning for Image Recognition.</em> CVPR 2016. <a href="https://arxiv.org/abs/1512.03385" target="_blank" rel="noopener">arXiv:1512.03385</a></li>
+    <li>He, Zhang, Ren, Sun. <em>Identity Mappings in Deep Residual Networks.</em> ECCV 2016. <a href="https://arxiv.org/abs/1603.05027" target="_blank" rel="noopener">arXiv:1603.05027</a></li>
+    <li>Yu, Koltun. <em>Multi-Scale Context Aggregation by Dilated Convolutions.</em> ICLR 2016. <a href="https://arxiv.org/abs/1511.07122" target="_blank" rel="noopener">arXiv:1511.07122</a> — ResNet류 백본을 세그멘테이션 등 밀집 예측으로 확장할 때 해상도를 지키는 방법</li>
+    <li>Veit, Wilber, Belongie. <em>Residual Networks Behave Like Ensembles of Relatively Shallow Networks.</em> NeurIPS 2016. <a href="https://arxiv.org/abs/1605.06431" target="_blank" rel="noopener">arXiv:1605.06431</a></li>
+  </ol>
+</section>
+
+</main>
+
+<footer>
+  <p>브라우저 안에서 전부 계산되는 인터랙티브 교육 자료 · 외부 라이브러리 없음 ·
+  <a href="https://github.com/dev-jonghoonpark/how-resnet-work" target="_blank" rel="noopener">소스 보기</a></p>
+</footer>
+
+<div id="tooltip" class="tooltip" role="status" aria-live="polite"></div>
+<script src="app.js"></script>
+</body>
+</html>

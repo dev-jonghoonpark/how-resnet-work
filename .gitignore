@@ -1,0 +1,6 @@
+# 논문/강의자료 PDF는 저작권 문제로 저장소에 포함하지 않음
+*.pdf
+
+.DS_Store
+.claude/
+.playwright-mcp/
