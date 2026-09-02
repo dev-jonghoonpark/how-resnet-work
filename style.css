@@ -271,6 +271,24 @@ td { font-variant-numeric: tabular-nums; }
 .pc-op.warn { border-color: var(--series-2); color: var(--series-2); }
 .pc-op.good { border-color: var(--series-1); color: var(--series-1); }
 
+/* ---------- 경로 펼쳐보기 (6절) ---------- */
+.up-legend { display: flex; gap: 18px; flex-wrap: wrap; font-size: 13px; color: var(--text-secondary); margin: 0 0 12px; }
+.up-legend span { display: inline-flex; align-items: center; gap: 7px; }
+.up-chip, .up-cell {
+  display: inline-block; text-align: center; padding: 2px 8px; border-radius: 7px;
+  border: 1px solid var(--baseline); background: var(--page); color: var(--text-muted); font-size: 12.5px;
+}
+.up-chip.on, .up-cell.on { background: var(--warn-soft); border-color: var(--series-2); color: var(--series-2); font-weight: 700; }
+.up-chip.off, .up-cell.off { border-style: dashed; }
+.unravel-head { font-size: 14px; color: var(--text-secondary); margin: 0 0 12px; }
+.unravel-head b { color: var(--text-primary); }
+.unravel { display: flex; flex-direction: column; gap: 14px; overflow-x: auto; }
+.up-group-title { font-size: 12.5px; color: var(--text-muted); margin-bottom: 6px; }
+.up-rows { display: flex; flex-direction: column; gap: 5px; }
+.up-path { display: flex; align-items: center; gap: 6px; width: max-content; }
+.up-path .up-cell { min-width: 34px; }
+.up-node { font-style: italic; font-weight: 700; color: var(--text-secondary); font-size: 13px; }
+
 /* ---------- 코드 ---------- */
 .code-card { padding: 14px 0 4px; overflow: hidden; }
 .code-card figcaption { padding: 0 20px; }
