@@ -271,7 +271,7 @@ td { font-variant-numeric: tabular-nums; }
 .pc-op.warn { border-color: var(--series-2); color: var(--series-2); }
 .pc-op.good { border-color: var(--series-1); color: var(--series-1); }
 
-/* ---------- 경로 펼쳐보기 (6절) ---------- */
+/* ---------- 경로 펼쳐보기 (7절) ---------- */
 .up-legend { display: flex; gap: 18px; flex-wrap: wrap; font-size: 13px; color: var(--text-secondary); margin: 0 0 12px; }
 .up-legend span { display: inline-flex; align-items: center; gap: 7px; }
 .up-chip, .up-cell {
