@@ -260,9 +260,6 @@ renderDegradation();
 /* ============================================================
    2절 — 잔차 블록 애니메이션
    ============================================================ */
-const blockState = { mode: 'res', dir: 'fwd' };
-let blockAnimFrame = null;
-
 /* 잔차 브랜치를 구성하는 연산 박스 */
 const BA_CONV = { label: '3×3 conv, 64', sub: 'weight', w: 140, h: 34 };
 const BA_BN = { label: 'BN', w: 90, h: 26 };
@@ -310,139 +307,148 @@ const BLOCK_SPECS = {
   }
 };
 
-function renderBlockAnim() {
-  cancelAnimationFrame(blockAnimFrame);
-  const host = $('#block-anim');
-  host.innerHTML = '';
-  const spec = BLOCK_SPECS[blockState.mode];
-  const isFwd = blockState.dir === 'fwd';
-  const blue = cssv('--series-1'), orange = cssv('--series-2'), ink = cssv('--text-primary');
+/* 같은 렌더러로 카드 두 장(v1/plain 토글용, v2 전용)을 각각 그린다 */
+function createBlockAnim({ hostSel, noteSel, state }) {
+  let animFrame = null;
+  function render() {
+    cancelAnimationFrame(animFrame);
+    const host = $(hostSel);
+    host.innerHTML = '';
+    const spec = BLOCK_SPECS[state.mode];
+    const isFwd = state.dir === 'fwd';
+    const blue = cssv('--series-1'), orange = cssv('--series-2'), ink = cssv('--text-primary');
 
-  /* ---- 세로 레이아웃 계산 (박스 개수가 모드마다 다르므로 높이를 계산해서 뽑는다) ---- */
-  const GAP = 16, TOP = 52, CX = 180;
-  let cursor = TOP;
-  const placed = spec.rows.map(r => { const y = cursor; cursor += r.h + GAP; return { r, y }; });
-  const branchEnd = cursor - GAP;          /* 잔차 브랜치 마지막 박스 아래 */
-  const plusCy = branchEnd + 46;           /* 덧셈 노드 중심 */
-  const outTop = plusCy + 13, outEnd = outTop + 51;
-  const yLabel = outEnd + 20;
-  const H = yLabel + 76;
+    /* ---- 세로 레이아웃 계산 (박스 개수가 모드마다 다르므로 높이를 계산해서 뽑는다) ---- */
+    const GAP = 16, TOP = 52, CX = 180;
+    let cursor = TOP;
+    const placed = spec.rows.map(r => { const y = cursor; cursor += r.h + GAP; return { r, y }; });
+    const branchEnd = cursor - GAP;          /* 잔차 브랜치 마지막 박스 아래 */
+    const plusCy = branchEnd + 46;           /* 덧셈 노드 중심 */
+    const outTop = plusCy + 13, outEnd = outTop + 51;
+    const yLabel = outEnd + 20;
+    const H = yLabel + 76;
 
-  const svg = mk('svg', { viewBox: `0 0 460 ${H}` }, null);
-  host.appendChild(svg);
+    const svg = mk('svg', { viewBox: `0 0 460 ${H}` }, null);
+    host.appendChild(svg);
 
-  /* ---- 경로 (잔차 브랜치 / 스킵 / 출력) ---- */
-  const mainPath = mk('path', { d: `M${CX},34 L${CX},${spec.skip ? plusCy - 13 : outTop}`, class: 'ba-path' }, svg);
-  const outPath = mk('path', { d: `M${CX},${outTop} L${CX},${outEnd}`, class: 'ba-path' }, svg);
-  let skipPath = null;
-  if (spec.skip) {
-    skipPath = mk('path', {
-      d: `M${CX},40 C320,46 340,84 340,132 L340,${plusCy - 46} ` +
-         `C340,${plusCy - 12} 262,${plusCy} 195,${plusCy}`,
-      class: 'ba-skip'
-    }, svg);
-    mk('text', { x: 352, y: 136, fill: blue, 'font-size': 12.5, 'font-weight': 600 }, svg).textContent = 'x';
-    mk('text', { x: 348, y: 152, fill: blue, 'font-size': 11 }, svg).textContent = 'identity';
-  }
-
-  /* ---- 박스들 ---- */
-  function box(x, y, w, h, label, sub) {
-    mk('rect', { x, y, width: w, height: h, rx: 8, class: 'ba-box' }, svg);
-    mk('text', { x: x + w / 2, y: y + (sub ? h / 2 - 2 : h / 2 + 4.5), 'text-anchor': 'middle', class: 'ba-box-label' }, svg).textContent = label;
-    if (sub) mk('text', { x: x + w / 2, y: y + h / 2 + 12, 'text-anchor': 'middle', class: 'ba-sub' }, svg).textContent = sub;
-  }
-  mk('text', { x: CX, y: 24, 'text-anchor': 'middle', fill: ink, 'font-size': 16, 'font-style': 'italic', 'font-weight': 700 }, svg).textContent = 'x';
-  placed.forEach(({ r, y }) => box(CX - r.w / 2, y, r.w, r.h, r.label, r.sub));
-  mk('text', { x: 96, y: (TOP + branchEnd) / 2 + 5, 'text-anchor': 'end', fill: orange, 'font-size': 15, 'font-style': 'italic', 'font-weight': 700 }, svg).textContent = 'F(x)';
-
-  /* ---- 덧셈 노드 · 덧셈 뒤 연산 ---- */
-  if (spec.skip) {
-    mk('circle', { cx: CX, cy: plusCy, r: 13, class: 'ba-plus' }, svg);
-    mk('text', { x: CX, y: plusCy + 5.5, 'text-anchor': 'middle', fill: ink, 'font-size': 17 }, svg).textContent = '+';
-  }
-  if (spec.postAdd) box(135, outTop + 13, 90, 26, spec.postAdd);
-  if (spec.mark) {
-    const atRelu = !!spec.postAdd;
-    mk('text', {
-      x: atRelu ? 232 : 196, y: outTop + (atRelu ? 30 : 40),
-      fill: atRelu ? orange : blue, 'font-size': 10.5, 'font-weight': 600
-    }, svg).textContent = spec.mark;
-  }
-  mk('text', { x: CX, y: yLabel, 'text-anchor': 'middle', fill: ink, 'font-size': 16, 'font-style': 'italic', 'font-weight': 700 }, svg).textContent = 'y';
-
-  /* ---- 수식 · 설명 ---- */
-  mk('text', { x: CX, y: yLabel + 36, 'text-anchor': 'middle', class: 'ba-formula' }, svg).textContent = spec.formula;
-  mk('text', { x: CX, y: yLabel + 58, 'text-anchor': 'middle', fill: cssv('--text-muted'), 'font-size': 11.5 }, svg)
-    .textContent = isFwd ? spec.svgNote.fwd : spec.svgNote.bwd;
-  $('#block-anim-note').innerHTML = spec.note;
-
-  /* ---- 흐름 애니메이션 ---- */
-  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-  const dotMain = mk('circle', { r: 6, fill: orange, opacity: 0.95 }, svg);
-  const dotSkip = spec.skip ? mk('circle', { r: 6, fill: blue, opacity: 0.95 }, svg) : null;
-  const dotOut = mk('circle', { r: 6, fill: ink, opacity: 0.95 }, svg);
-  const lenMain = mainPath.getTotalLength();
-  const lenOut = outPath.getTotalLength();
-  const lenSkip = skipPath ? skipPath.getTotalLength() : 0;
-  const T = 3000, SPLIT = 0.68;
-
-  function place(dot, path, len, frac) {
-    const p = path.getPointAtLength(len * Math.min(Math.max(frac, 0), 1));
-    dot.setAttribute('cx', p.x); dot.setAttribute('cy', p.y);
-  }
-  function frame(now) {
-    const p = (now % T) / T;
-    if (isFwd) {
-      if (p < SPLIT) {
-        const f = p / SPLIT;
-        place(dotMain, mainPath, lenMain, f);
-        if (dotSkip) place(dotSkip, skipPath, lenSkip, f);
-        dotMain.setAttribute('opacity', 0.95);
-        if (dotSkip) dotSkip.setAttribute('opacity', 0.95);
-        dotOut.setAttribute('opacity', 0);
-      } else {
-        const f = (p - SPLIT) / (1 - SPLIT);
-        place(dotOut, outPath, lenOut, f);
-        dotMain.setAttribute('opacity', 0); if (dotSkip) dotSkip.setAttribute('opacity', 0);
-        dotOut.setAttribute('opacity', 0.95);
-      }
-    } else {
-      if (p < 1 - SPLIT) {
-        const f = 1 - p / (1 - SPLIT);
-        place(dotOut, outPath, lenOut, f);
-        dotOut.setAttribute('opacity', 0.95);
-        dotMain.setAttribute('opacity', 0); if (dotSkip) dotSkip.setAttribute('opacity', 0);
-      } else {
-        const f = 1 - (p - (1 - SPLIT)) / SPLIT;
-        place(dotMain, mainPath, lenMain, f);
-        if (dotSkip) place(dotSkip, skipPath, lenSkip, f);
-        dotMain.setAttribute('opacity', 0.95);
-        if (dotSkip) dotSkip.setAttribute('opacity', 0.95);
-        dotOut.setAttribute('opacity', 0);
-      }
+    /* ---- 경로 (잔차 브랜치 / 스킵 / 출력) ---- */
+    const mainPath = mk('path', { d: `M${CX},34 L${CX},${spec.skip ? plusCy - 13 : outTop}`, class: 'ba-path' }, svg);
+    const outPath = mk('path', { d: `M${CX},${outTop} L${CX},${outEnd}`, class: 'ba-path' }, svg);
+    let skipPath = null;
+    if (spec.skip) {
+      skipPath = mk('path', {
+        d: `M${CX},40 C320,46 340,84 340,132 L340,${plusCy - 46} ` +
+           `C340,${plusCy - 12} 262,${plusCy} 195,${plusCy}`,
+        class: 'ba-skip'
+      }, svg);
+      mk('text', { x: 352, y: 136, fill: blue, 'font-size': 12.5, 'font-weight': 600 }, svg).textContent = 'x';
+      mk('text', { x: 348, y: 152, fill: blue, 'font-size': 11 }, svg).textContent = 'identity';
     }
-    blockAnimFrame = requestAnimationFrame(frame);
+
+    /* ---- 박스들 ---- */
+    function box(x, y, w, h, label, sub) {
+      mk('rect', { x, y, width: w, height: h, rx: 8, class: 'ba-box' }, svg);
+      mk('text', { x: x + w / 2, y: y + (sub ? h / 2 - 2 : h / 2 + 4.5), 'text-anchor': 'middle', class: 'ba-box-label' }, svg).textContent = label;
+      if (sub) mk('text', { x: x + w / 2, y: y + h / 2 + 12, 'text-anchor': 'middle', class: 'ba-sub' }, svg).textContent = sub;
+    }
+    mk('text', { x: CX, y: 24, 'text-anchor': 'middle', fill: ink, 'font-size': 16, 'font-style': 'italic', 'font-weight': 700 }, svg).textContent = 'x';
+    placed.forEach(({ r, y }) => box(CX - r.w / 2, y, r.w, r.h, r.label, r.sub));
+    mk('text', { x: 96, y: (TOP + branchEnd) / 2 + 5, 'text-anchor': 'end', fill: orange, 'font-size': 15, 'font-style': 'italic', 'font-weight': 700 }, svg).textContent = 'F(x)';
+
+    /* ---- 덧셈 노드 · 덧셈 뒤 연산 ---- */
+    if (spec.skip) {
+      mk('circle', { cx: CX, cy: plusCy, r: 13, class: 'ba-plus' }, svg);
+      mk('text', { x: CX, y: plusCy + 5.5, 'text-anchor': 'middle', fill: ink, 'font-size': 17 }, svg).textContent = '+';
+    }
+    if (spec.postAdd) box(135, outTop + 13, 90, 26, spec.postAdd);
+    if (spec.mark) {
+      const atRelu = !!spec.postAdd;
+      mk('text', {
+        x: atRelu ? 232 : 196, y: outTop + (atRelu ? 30 : 40),
+        fill: atRelu ? orange : blue, 'font-size': 10.5, 'font-weight': 600
+      }, svg).textContent = spec.mark;
+    }
+    mk('text', { x: CX, y: yLabel, 'text-anchor': 'middle', fill: ink, 'font-size': 16, 'font-style': 'italic', 'font-weight': 700 }, svg).textContent = 'y';
+
+    /* ---- 수식 · 설명 ---- */
+    mk('text', { x: CX, y: yLabel + 36, 'text-anchor': 'middle', class: 'ba-formula' }, svg).textContent = spec.formula;
+    mk('text', { x: CX, y: yLabel + 58, 'text-anchor': 'middle', fill: cssv('--text-muted'), 'font-size': 11.5 }, svg)
+      .textContent = isFwd ? spec.svgNote.fwd : spec.svgNote.bwd;
+    $(noteSel).innerHTML = spec.note;
+
+    /* ---- 흐름 애니메이션 ---- */
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const dotMain = mk('circle', { r: 6, fill: orange, opacity: 0.95 }, svg);
+    const dotSkip = spec.skip ? mk('circle', { r: 6, fill: blue, opacity: 0.95 }, svg) : null;
+    const dotOut = mk('circle', { r: 6, fill: ink, opacity: 0.95 }, svg);
+    const lenMain = mainPath.getTotalLength();
+    const lenOut = outPath.getTotalLength();
+    const lenSkip = skipPath ? skipPath.getTotalLength() : 0;
+    const T = 3000, SPLIT = 0.68;
+
+    function place(dot, path, len, frac) {
+      const p = path.getPointAtLength(len * Math.min(Math.max(frac, 0), 1));
+      dot.setAttribute('cx', p.x); dot.setAttribute('cy', p.y);
+    }
+    function frame(now) {
+      const p = (now % T) / T;
+      if (isFwd) {
+        if (p < SPLIT) {
+          const f = p / SPLIT;
+          place(dotMain, mainPath, lenMain, f);
+          if (dotSkip) place(dotSkip, skipPath, lenSkip, f);
+          dotMain.setAttribute('opacity', 0.95);
+          if (dotSkip) dotSkip.setAttribute('opacity', 0.95);
+          dotOut.setAttribute('opacity', 0);
+        } else {
+          const f = (p - SPLIT) / (1 - SPLIT);
+          place(dotOut, outPath, lenOut, f);
+          dotMain.setAttribute('opacity', 0); if (dotSkip) dotSkip.setAttribute('opacity', 0);
+          dotOut.setAttribute('opacity', 0.95);
+        }
+      } else {
+        if (p < 1 - SPLIT) {
+          const f = 1 - p / (1 - SPLIT);
+          place(dotOut, outPath, lenOut, f);
+          dotOut.setAttribute('opacity', 0.95);
+          dotMain.setAttribute('opacity', 0); if (dotSkip) dotSkip.setAttribute('opacity', 0);
+        } else {
+          const f = 1 - (p - (1 - SPLIT)) / SPLIT;
+          place(dotMain, mainPath, lenMain, f);
+          if (dotSkip) place(dotSkip, skipPath, lenSkip, f);
+          dotMain.setAttribute('opacity', 0.95);
+          if (dotSkip) dotSkip.setAttribute('opacity', 0.95);
+          dotOut.setAttribute('opacity', 0);
+        }
+      }
+      animFrame = requestAnimationFrame(frame);
+    }
+    animFrame = requestAnimationFrame(frame);
   }
-  blockAnimFrame = requestAnimationFrame(frame);
+  return render;
 }
 
-const BLK_MODE_BTNS = { res: '#blk-btn-res', plain: '#blk-btn-plain', v2: '#blk-btn-v2' };
-const BLK_DIR_BTNS = { fwd: '#blk-btn-fwd', bwd: '#blk-btn-bwd' };
+const blockState = { mode: 'res', dir: 'fwd' };
+const blockV2State = { mode: 'v2', dir: 'fwd' };
+const renderBlockAnim = createBlockAnim({ hostSel: '#block-anim', noteSel: '#block-anim-note', state: blockState });
+const renderBlockAnimV2 = createBlockAnim({ hostSel: '#block-anim-v2', noteSel: '#block-anim-v2-note', state: blockV2State });
+
 function setSeg(btns, on) {
   for (const k in btns) $(btns[k]).classList.toggle('active', k === on);
 }
-for (const mode in BLK_MODE_BTNS) {
-  $(BLK_MODE_BTNS[mode]).addEventListener('click', () => {
-    blockState.mode = mode; setSeg(BLK_MODE_BTNS, mode); renderBlockAnim();
-  });
+function bindSeg(btns, key, state, render) {
+  for (const k in btns) {
+    $(btns[k]).addEventListener('click', () => {
+      state[key] = k; setSeg(btns, k); render();
+    });
+  }
 }
-for (const dir in BLK_DIR_BTNS) {
-  $(BLK_DIR_BTNS[dir]).addEventListener('click', () => {
-    blockState.dir = dir; setSeg(BLK_DIR_BTNS, dir); renderBlockAnim();
-  });
-}
-rerenders.push(renderBlockAnim);
+bindSeg({ res: '#blk-btn-res', plain: '#blk-btn-plain' }, 'mode', blockState, renderBlockAnim);
+bindSeg({ fwd: '#blk-btn-fwd', bwd: '#blk-btn-bwd' }, 'dir', blockState, renderBlockAnim);
+bindSeg({ fwd: '#blk2-btn-fwd', bwd: '#blk2-btn-bwd' }, 'dir', blockV2State, renderBlockAnimV2);
+rerenders.push(renderBlockAnim, renderBlockAnimV2);
 renderBlockAnim();
+renderBlockAnimV2();
 
 /* ============================================================
    3절 — 신호 전파 시뮬레이터

@@ -7,7 +7,7 @@ ResNet(Deep Residual Learning)의 동작 원리를 **브라우저에서 직접 �
 ## 내용
 
 1. **깊이의 역설** — 열화 문제(degradation problem): 층을 쌓을수록 훈련 오류가 나빠지는 현상
-2. **핵심 아이디어** — 잔차 학습 `y = F(x) + x`, 애니메이션 블록 다이어그램 (순전파/역전파 · v1 post-activation / plain / v2 pre-activation 블록 비교)
+2. **핵심 아이디어** — 잔차 학습 `y = F(x) + x`, 애니메이션 블록 해부 다이어그램 2종 (v1 post-activation · skip 제거 토글 / v2 pre-activation), 각각 순전파·역전파 전환
 3. **신호 전파 시뮬레이터** — 무작위 네트워크에서 실제 역전파를 수행해 plain(곱셈적)과 residual(덧셈적)의 그래디언트 전파를 비교. 초기화 배율·shortcut 스케일(λ) 실험
 4. **미니 학습 실험** — 같은 깊이의 plain vs residual 네트워크를 브라우저에서 실시간 훈련. 48층에서 plain이 무너지는 것을 직접 확인
 5. **아키텍처 탐색기** — ResNet-18/34/50/101/152 구조, Basic vs Bottleneck 블록 파라미터 비교, ImageNet 결과
