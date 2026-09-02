@@ -135,11 +135,12 @@
   <figure class="viz-card">
     <figcaption>
       <strong>잔차 블록 해부</strong>
-      <span class="cap-note">데이터가 두 갈래 경로로 흐르는 과정 · 버튼으로 모드를 바꿔보세요</span>
+      <span class="cap-note">데이터가 두 갈래 경로로 흐르는 과정 · v1 / plain / v2 세 가지 블록을 바꿔가며 비교해 보세요</span>
     </figcaption>
     <div class="controls" role="group" aria-label="블록 다이어그램 컨트롤">
-      <button class="btn seg active" id="blk-btn-res">잔차 블록</button>
+      <button class="btn seg active" id="blk-btn-res">v1 잔차 블록</button>
       <button class="btn seg" id="blk-btn-plain">plain 블록 (skip 제거)</button>
+      <button class="btn seg" id="blk-btn-v2">v2 잔차 블록 (pre-act)</button>
       <span class="ctrl-sep"></span>
       <button class="btn seg active" id="blk-btn-fwd">순전파 ▶</button>
       <button class="btn seg" id="blk-btn-bwd">◀ 역전파</button>
@@ -364,6 +365,12 @@
       </div>
     </div>
   </div>
+  <p>
+    두 구조가 실제로 어떻게 다른지는 <a href="#s2">2절의 블록 해부 다이어그램</a>에서
+    <strong>“v2 잔차 블록 (pre-act)”</strong> 버튼을 눌러 확인할 수 있습니다.
+    덧셈 노드 뒤가 텅 비어 있다는 점, 그리고 역전파 모드에서 그래디언트가
+    어떤 연산도 거치지 않고 shortcut을 타고 빠져나간다는 점이 v1과의 차이입니다.
+  </p>
   <p>
     shortcut을 “더 똑똑하게” 만들려는 시도는 전부 실패했습니다.
     110층 ResNet(CIFAR-10)으로 수행한 절제 실험(ablation):
