@@ -1205,6 +1205,117 @@ rerenders.push(renderResults);
 renderResults();
 
 /* ============================================================
+   6절 — 경로 펼쳐보기 & 경로 길이 분포
+   ============================================================ */
+const SUBSCRIPT = ['₀', '₁', '₂', '₃', '₄', '₅', '₆', '₇', '₈', '₉'];
+const unravelState = { n: 3 };
+
+/* 블록 n개 → 2ⁿ개 경로를 길이(=잔차 브랜치를 지난 횟수)별로 묶어 나열 */
+function renderUnravel() {
+  const n = unravelState.n;
+  const host = $('#unravel');
+  host.innerHTML = '';
+
+  const groups = Array.from({ length: n + 1 }, () => []);
+  for (let mask = 0; mask < (1 << n); mask++) {
+    let k = 0;
+    for (let i = 0; i < n; i++) if (mask & (1 << i)) k++;
+    groups[k].push(mask);
+  }
+
+  $('#unravel-head').innerHTML =
+    `블록 <b>${n}개</b> → 경로 <b>2<sup>${n}</sup> = ${1 << n}개</b>` +
+    ` · 길이별 개수 <b>${groups.map(g => g.length).join(' · ')}</b>` +
+    ` (합치면 ${groups.reduce((a, g) => a + g.length, 0)})`;
+
+  groups.forEach((g, k) => {
+    const wrap = document.createElement('div');
+    const title = document.createElement('div');
+    title.className = 'up-group-title';
+    title.textContent = k === 0
+      ? `길이 0 — 전부 건너뜀 (순수 shortcut) · ${g.length}개`
+      : `길이 ${k} — 잔차 브랜치를 ${k}번 통과 · ${g.length}개`;
+    wrap.appendChild(title);
+
+    const rows = document.createElement('div');
+    rows.className = 'up-rows';
+    g.forEach(mask => {
+      const cells = [];
+      for (let i = 0; i < n; i++) {
+        const on = !!(mask & (1 << i));
+        cells.push(`<span class="up-cell ${on ? 'on' : 'off'}">${on ? 'F' + SUBSCRIPT[i + 1] : '─'}</span>`);
+      }
+      const row = document.createElement('div');
+      row.className = 'up-path';
+      row.innerHTML = '<span class="up-node">x</span>' + cells.join('') + '<span class="up-node">y</span>';
+      rows.appendChild(row);
+    });
+    wrap.appendChild(rows);
+    host.appendChild(wrap);
+  });
+}
+const UNR_BTNS = { 2: '#unr-btn-2', 3: '#unr-btn-3', 4: '#unr-btn-4' };
+for (const n in UNR_BTNS) {
+  $(UNR_BTNS[n]).addEventListener('click', () => {
+    unravelState.n = +n; setSeg(UNR_BTNS, n); renderUnravel();
+  });
+}
+renderUnravel();
+
+/* ---------- 경로 길이 분포 vs 그래디언트 기여 ----------
+   길이 k인 경로는 C(n,k)개. 경로 하나가 전달하는 그래디언트는 블록을 지날수록
+   지수적으로 줄어드는 것이 실측(Veit et al.)이므로 ρ^k로 단순화해 가중한다. */
+const ENS_RHO = 0.22;
+const LOG_FACT = [0];
+for (let i = 1; i <= 128; i++) LOG_FACT[i] = LOG_FACT[i - 1] + Math.log(i);
+
+function pow2Text(n) {
+  if (n <= 40) return Math.pow(2, n).toLocaleString('en-US');
+  const e = n * Math.LN2 / Math.LN10;
+  return `약 ${Math.pow(10, e - Math.floor(e)).toFixed(1)} × 10${toSup(Math.floor(e))}`;
+}
+
+function renderPathDist() {
+  const n = +$('#ens-n').value;
+  $('#ens-n-out').textContent = n;
+
+  const cnt = [], grad = [];
+  let sumC = 0, sumG = 0, effSum = 0;
+  for (let k = 0; k <= n; k++) {
+    const logC = LOG_FACT[n] - LOG_FACT[k] - LOG_FACT[n - k];
+    const c = Math.exp(logC - n * Math.LN2);            /* C(n,k)/2ⁿ */
+    const g = Math.exp(logC + k * Math.log(ENS_RHO));
+    cnt.push(c); grad.push(g); sumC += c; sumG += g; effSum += k * g;
+  }
+  const effLen = effSum / sumG;
+
+  drawLineChart($('#chart-path-dist'), {
+    series: [
+      { name: '경로 개수', color: cssv('--text-muted'), points: cnt.map((v, k) => [k, v / sumC * 100]), dash: true },
+      { name: '그래디언트 기여', color: cssv('--series-1'), points: grad.map((v, k) => [k, v / sumG * 100]) },
+    ],
+    xLabel: '경로 길이 — 지나는 잔차 블록 수 (0 = 순수 shortcut)',
+    yLabel: '전체 대비 비중 (%)',
+    yMinZero: true,
+    xTipFmt: v => `길이 ${Math.round(v)}블록`,
+    yTipFmt: v => v.toFixed(2) + '%',
+    yFmt: v => v.toFixed(0) + '%',
+    directLabels: false,   /* 두 곡선 모두 오른쪽 끝이 0이라 끝 라벨이 겹친다 — 범례로 충분 */
+    rightPad: 24,
+    height: 290,
+  });
+
+  $('#ens-note').innerHTML =
+    `블록 ${n}개 → 경로 <strong>2<sup>${n}</sup> = ${pow2Text(n)}개</strong>. ` +
+    `경로 <em>개수</em>의 평균 길이는 <strong>${(n / 2).toFixed(0)}블록</strong>이지만, ` +
+    `<em>그래디언트 기여</em>의 평균 길이는 <strong>${effLen.toFixed(1)}블록</strong>입니다. ` +
+    `깊이를 아무리 늘려도 실제로 학습을 이끄는 경로는 이 짧은 쪽에 계속 머뭅니다.`;
+}
+$('#ens-n').addEventListener('input', renderPathDist);
+rerenders.push(renderPathDist);
+renderPathDist();
+
+/* ============================================================
    코드 하이라이팅 (간단 정규식)
    ============================================================ */
 document.querySelectorAll('code.lang-py').forEach(block => {

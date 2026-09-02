@@ -404,15 +404,137 @@
     v2는 <strong>4.92%</strong>를 달성하며 훨씬 쉽게 훈련됐습니다.
     “깊이 자체는 더 이상 적이 아니다 — 최적화를 방해하지만 않는다면”이 증명된 순간입니다.
   </p>
-  <div class="callout">
-    <p class="callout-title">한 걸음 더: ResNet은 사실 얕은 네트워크들의 앙상블처럼 동작한다</p>
+  <h3>한 걸음 더 — 왜 경로가 2<sup>n</sup>개인가</h3>
+  <p>
+    후속 연구(Veit et al., 2016)는 ResNet을 완전히 다른 각도에서 봤습니다.
+    잔차 블록을 <strong>“층을 쌓은 사슬”이 아니라 “경로가 갈라지는 갈림길”</strong>로 보면,
+    n개 블록짜리 ResNet에는 입력에서 출력까지 가는 길이 <strong>2<sup>n</sup>개</strong> 존재합니다.
+  </p>
+  <p>
+    이유는 단순합니다. 잔차 블록은 <em>y</em> = <em>x</em> + <em>F(x)</em>,
+    즉 신호가 블록마다 <strong>두 갈래로 갈라졌다가 덧셈에서 다시 합쳐집니다</strong>.
+    블록 하나를 지날 때마다 “<strong>잔차 브랜치 F를 통과할까, shortcut으로 건너뛸까</strong>”라는
+    이지선다가 한 번씩 생기는 셈입니다.
+    선택이 n번 반복되니 가능한 조합은 2 × 2 × … × 2 = 2<sup>n</sup>.
+    plain 네트워크에는 갈림길이 없으므로 경로가 <strong>딱 하나</strong>뿐입니다.
+  </p>
+
+  <figure class="viz-card">
+    <figcaption>
+      <strong>경로 펼쳐보기 (unraveled view)</strong>
+      <span class="cap-note">블록 수를 바꿔가며 경로가 어떻게 두 배씩 늘어나는지 확인해 보세요</span>
+    </figcaption>
+    <div class="controls" role="group" aria-label="블록 수 선택">
+      <span class="ctrl-label">블록 수</span>
+      <button class="btn seg" id="unr-btn-2">2개</button>
+      <button class="btn seg active" id="unr-btn-3">3개</button>
+      <button class="btn seg" id="unr-btn-4">4개</button>
+    </div>
+    <div class="up-legend">
+      <span><span class="up-chip on">F</span> 잔차 브랜치를 통과</span>
+      <span><span class="up-chip off">─</span> shortcut으로 건너뜀</span>
+    </div>
+    <p class="unravel-head" id="unravel-head"></p>
+    <div id="unravel" class="unravel"></div>
+    <p class="viz-note">
+      길이별 경로 수가 <strong>1 · 3 · 3 · 1</strong>처럼 나오는 것을 눈치채셨나요?
+      길이가 <em>k</em>인 경로는 “n개 블록 중 <em>k</em>개를 고르는 경우의 수”, 즉 이항계수
+      <em>C(n, k)</em>개입니다. 그리고 이 값들을 모두 더하면 정확히 2<sup>n</sup>이 됩니다.
+    </p>
+  </figure>
+
+  <p>
+    역전파로 보면 이 “2<sup>n</sup>개”가 비유가 아니라 <strong>수식 그대로</strong>라는 게 분명해집니다.
+    블록의 야코비안은 <em>∂(x + F(x))/∂x</em> = <em>I</em> + <em>∂F/∂x</em> — 즉 <strong>두 항의 합</strong>이고,
+    n개 블록을 통과한 그래디언트는 이 합들의 곱입니다.
+  </p>
+  <div class="formula-block">
+    <div class="fline">
+      <span class="fpart">∂x<sub>n</sub>/∂x<sub>0</sub></span> =
+      ( <strong class="hl-one">I</strong> + ∂F<sub>1</sub> )( <strong class="hl-one">I</strong> + ∂F<sub>2</sub> ) ⋯ ( <strong class="hl-one">I</strong> + ∂F<sub>n</sub> )
+      <span class="fnote">← 괄호마다 “건너뛰기(<strong class="hl-one">I</strong>)”와 “잔차 브랜치(∂F)” 중 하나를 고른다</span>
+    </div>
+    <div class="fline">
+      = <span class="fsum">Σ</span> (고른 ∂F들의 곱)
+      <span class="fnote">← 전개하면 항이 정확히 2<sup>n</sup>개. ∂F를 <em>k</em>개 고른 항 = 길이 <em>k</em> 경로, <em>C(n, k)</em>개</span>
+    </div>
+    <div class="fline">
+      plain: <span class="fpart">∂x<sub>n</sub>/∂x<sub>0</sub></span> = W<sub>1</sub>W<sub>2</sub> ⋯ W<sub>n</sub>
+      <span class="fnote">← 항이 단 하나뿐. 이 곱이 줄어들면 그래디언트가 통째로 소멸</span>
+    </div>
+  </div>
+  <p>
+    다만 2<sup>n</sup>개 경로가 모두 똑같이 기여하지는 않습니다.
+    경로가 잔차 브랜치를 한 번 더 지날 때마다 전달되는 그래디언트는 <strong>지수적으로 작아집니다</strong>.
+    그래서 경로의 <em>개수</em>는 중간 길이에 몰려 있는데도,
+    실제 <em>학습에 기여하는</em> 경로는 훨씬 짧은 쪽에 몰립니다.
+  </p>
+
+  <figure class="viz-card">
+    <figcaption>
+      <strong>경로 길이 분포 vs 실제 그래디언트 기여</strong>
+      <span class="cap-note">경로 하나가 블록을 지날 때마다 그래디언트가 ρ = 0.22배로 준다고 본 단순 모델 · 논문은 이 지수적 감쇠를 실측했습니다</span>
+    </figcaption>
+    <div class="controls">
+      <label class="ctrl">블록 수 <output id="ens-n-out">54</output>개
+        <input type="range" id="ens-n" min="4" max="54" step="2" value="54">
+      </label>
+    </div>
+    <div id="chart-path-dist" class="chart chart-line" role="img" aria-label="경로 길이별 개수 분포와 그래디언트 기여 분포. 개수는 중간 길이에, 기여는 짧은 길이에 몰린다."></div>
+    <p class="viz-note" id="ens-note"></p>
+  </figure>
+
+  <p>
+    기본값인 블록 54개는 CIFAR-10용 <strong>110층 ResNet</strong>과 같은 규모입니다.
+    경로는 2<sup>54</sup>개(약 1.8경 개)나 되고 그중 대부분은 20~30블록짜리 긴 경로인데,
+    정작 그래디언트의 대부분은 <strong>5~17블록(약 10~34층)짜리 짧은 경로</strong>에서 옵니다.
+    110층을 쌓았지만 <strong>실질적으로 훈련되는 것은 훨씬 얕은 네트워크들</strong>인 셈입니다.
+  </p>
+
+  <h3>앙상블이란 — 그리고 ResNet이 왜 그렇게 보이는가</h3>
+  <p>
+    <strong>앙상블(ensemble)</strong>은 여러 모델의 예측을 모아 하나로 쓰는 기법입니다.
+    투표를 시키거나 평균을 내죠. 랜덤 포레스트(결정 트리 수백 개의 투표)가 대표적입니다.
+    핵심은 <strong>구성원들이 서로 다른 실수를 한다</strong>는 점입니다.
+    실수가 제각각이면 모아 놓았을 때 서로 상쇄되어, 평균이 개별 구성원보다 안정적으로 좋아집니다.
+  </p>
+  <div class="callout analogy">
+    <p class="callout-title">사슬 vs 합창단</p>
     <p>
-      후속 연구(Veit et al., 2016)에 따르면 잔차 연결이 만드는 수많은 지름길 덕분에,
-      n개 블록의 ResNet에는 입력에서 출력까지 2<sup>n</sup>개의 경로가 존재합니다.
-      그래디언트는 대부분 비교적 짧은 경로(110층 모델에서 약 10~34층짜리)를 타고 흐르고,
-      개별 블록 하나를 제거해도 성능이 거의 떨어지지 않습니다.
-      즉 1000층 ResNet은 “1000층짜리 사슬”이 아니라
-      <strong>겹쳐진 얕은 네트워크들의 거대한 앙상블</strong>에 가깝습니다.
+      plain 네트워크는 <strong>사슬</strong>입니다. 고리 하나가 끊어지면 전체가 끊어집니다.
+      앙상블은 <strong>합창단</strong>입니다. 한 명이 빠져도 노래는 계속되고, 소리만 조금 얇아집니다.
+      깊은 네트워크가 어느 쪽에 가까운지는 <strong>층을 하나 빼 보면</strong> 알 수 있습니다.
+    </p>
+  </div>
+  <p>
+    Veit et al.이 실제로 그 실험을 했습니다. 훈련이 끝난 네트워크에서 층을 지워 본 것입니다.
+  </p>
+  <ul>
+    <li><strong>ResNet에서 잔차 블록 하나를 통째로 삭제</strong> → 오류가 거의 오르지 않습니다.
+      경로 절반(그 블록을 지나던 경로들)이 사라졌을 뿐, 나머지 절반은 그대로 살아 있기 때문입니다.</li>
+    <li><strong>VGG 같은 plain 네트워크에서 층 하나를 삭제</strong> → 성능이 무작위 추측 수준으로 붕괴합니다.
+      경로가 하나뿐이라 그 길이 끊기면 남는 게 없습니다.</li>
+    <li><strong>여러 블록을 지울수록</strong> 오류가 갑자기 무너지지 않고 <strong>매끄럽게</strong> 올라갑니다.
+      앙상블에서 구성원 수를 줄일 때 나타나는 전형적인 모습입니다.</li>
+    <li><strong>블록의 순서를 섞어도</strong> 성능이 완만하게만 떨어집니다.
+      순서가 중요한 “사슬”이라면 있을 수 없는 일입니다.</li>
+  </ul>
+  <p>
+    그래서 1000층 ResNet은 “1000층짜리 사슬”이라기보다
+    <strong>가중치를 나눠 쓰는 얕은 네트워크 수없이 많은 것들의 모음</strong>에 가깝습니다.
+    깊이를 늘려도 최적화가 무너지지 않는 이유도 여기서 다시 설명됩니다 —
+    블록을 하나 더 쌓으면 <em>긴</em> 경로만 늘어나는 게 아니라
+    <strong>짧은 경로도 함께 늘어나기</strong> 때문입니다.
+  </p>
+  <div class="callout">
+    <p class="callout-title">주의: “앙상블이다”가 아니라 “앙상블처럼 동작한다”</p>
+    <p>
+      2<sup>n</sup>개의 경로는 진짜 앙상블의 구성원과는 다릅니다.
+      독립적으로 훈련된 별개의 모델이 아니라 <strong>같은 가중치를 공유</strong>하고,
+      비선형 때문에 출력이 경로별 결과의 깔끔한 합으로 분해되지도 않습니다
+      (역전파의 2<sup>n</sup>개 항 전개는 정확하지만, 순전파는 그렇지 않습니다).
+      그래서 논문 제목도 “ResNet은 앙상블이다”가 아니라
+      <em>Residual Networks Behave Like Ensembles…</em>(앙상블<strong>처럼 동작한다</strong>)입니다.
     </p>
   </div>
 </section>
