@@ -273,13 +273,12 @@ const BLOCK_SPECS = {
     rows: [BA_CONV, BA_BN, BA_RELU, BA_CONV, BA_BN],
     skip: true, postAdd: 'ReLU',
     formula: 'y = ReLU( F(x) + x )',
-    mark: '← identity 경로를 방해',
     svgNote: {
       fwd: '두 경로가 덧셈에서 합류 — shortcut은 파라미터 0개',
       bwd: '그래디언트가 덧셈 노드에서 두 경로로 복제되어 거슬러 올라감'
     },
-    note: '<strong>v1 · post-activation:</strong> 덧셈 <em>뒤에</em> ReLU가 한 번 더 걸립니다. ' +
-      '지름길은 “거의” 항등이지만 완전한 항등은 아닙니다 — 100층대까지는 충분해도 1000층에서는 이 작은 방해가 누적됩니다.'
+    note: '<strong>잔차 블록:</strong> 입력 <em>x</em>가 가중치 층을 지나는 경로와 아무것도 하지 않고 건너뛰는 shortcut 경로로 갈라졌다가 덧셈에서 다시 만납니다. ' +
+      'shortcut에는 파라미터도 곱셈도 없기 때문에, 역전파 때 그래디언트가 이 길을 타고 줄지 않은 채 앞쪽 층까지 내려갑니다.'
   },
   plain: {
     rows: [BA_CONV, BA_BN, BA_RELU, BA_CONV, BA_BN],
@@ -296,13 +295,15 @@ const BLOCK_SPECS = {
     rows: [BA_BN, BA_RELU, BA_CONV, BA_BN, BA_RELU, BA_CONV],
     skip: true, postAdd: null,
     formula: 'y = F(x) + x',
-    mark: '덧셈 뒤에 아무것도 없음 — x가 그대로 통과',
+    mark: ['덧셈 뒤에 아무 연산도 없음 — x가 그대로 통과',
+           'v1은 여기에 ReLU가 있어 항등 경로를 방해했다'],
     svgNote: {
       fwd: '덧셈부터 출력까지 손대지 않은 완전한 항등 경로',
       bwd: '그래디언트가 변형 없이 1로 직통 — 1001층도 훈련 가능'
     },
-    note: '<strong>v2 · pre-activation:</strong> BN과 ReLU를 conv <em>앞</em>으로 옮기면 덧셈 뒤에 남는 연산이 없습니다. ' +
-      '입력에서 출력까지 아무 변형도 거치지 않는 <strong>완전한 항등 경로</strong>가 뚫려 1001층 ResNet도 훈련됩니다(6절). ' +
+    note: '<strong>v2 · pre-activation:</strong> v1은 덧셈 <em>뒤에</em> ReLU가 한 번 더 걸려 지름길이 “거의” 항등이었습니다. ' +
+      'BN과 ReLU를 conv <em>앞</em>으로 옮기면 덧셈 뒤에 남는 연산이 없습니다. ' +
+      '입력에서 출력까지 아무 변형도 거치지 않는 <strong>완전한 항등 경로</strong>가 뚫려 아래에서 보듯 1001층 ResNet도 훈련됩니다. ' +
       '잔차 브랜치가 항상 BN으로 시작한다는 점에서 정규화 효과도 더 좋아집니다.'
   }
 };
@@ -361,13 +362,13 @@ function createBlockAnim({ hostSel, noteSel, state }) {
       mk('text', { x: CX, y: plusCy + 5.5, 'text-anchor': 'middle', fill: ink, 'font-size': 17 }, svg).textContent = '+';
     }
     if (spec.postAdd) box(135, outTop + 13, 90, 26, spec.postAdd);
-    if (spec.mark) {
-      const atRelu = !!spec.postAdd;
+    (spec.mark || []).forEach((line, i) => {
       mk('text', {
-        x: atRelu ? 232 : 196, y: outTop + (atRelu ? 30 : 40),
-        fill: atRelu ? orange : blue, 'font-size': 10.5, 'font-weight': 600
-      }, svg).textContent = spec.mark;
-    }
+        x: 196, y: outTop + 34 + i * 15,
+        fill: i === 0 ? blue : cssv('--text-muted'),
+        'font-size': i === 0 ? 10.5 : 10, 'font-weight': i === 0 ? 600 : 400
+      }, svg).textContent = line;
+    });
     mk('text', { x: CX, y: yLabel, 'text-anchor': 'middle', fill: ink, 'font-size': 16, 'font-style': 'italic', 'font-weight': 700 }, svg).textContent = 'y';
 
     /* ---- 수식 · 설명 ---- */
