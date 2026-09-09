@@ -19,7 +19,8 @@
       <a href="#s3">신호 전파</a>
       <a href="#s4">학습 실험</a>
       <a href="#s5">아키텍처</a>
-      <a href="#s7">ResNet v2</a>
+      <a href="#s6">ResNet v2</a>
+      <a href="#s7">앙상블 관점</a>
       <a href="#s8">구현</a>
     </div>
   </div>
@@ -337,7 +338,7 @@
 </section>
 
 <!-- ============================================================ -->
-<section id="s7">
+<section id="s6">
   <h2><span class="secno">6</span>ResNet v2 — “깨끗한” 지름길의 완성</h2>
   <p>
     원조 ResNet(v1)에도 옥의 티가 있었습니다. 덧셈 <em>뒤에</em> ReLU가 오기 때문에
@@ -404,12 +405,26 @@
     v2는 <strong>4.92%</strong>를 달성하며 훨씬 쉽게 훈련됐습니다.
     “깊이 자체는 더 이상 적이 아니다 — 최적화를 방해하지만 않는다면”이 증명된 순간입니다.
   </p>
-  <h3>한 걸음 더 — 왜 경로가 2<sup>n</sup>개인가</h3>
   <p>
-    후속 연구(Veit et al., 2016)는 ResNet을 완전히 다른 각도에서 봤습니다.
-    잔차 블록을 <strong>“층을 쌓은 사슬”이 아니라 “경로가 갈라지는 갈림길”</strong>로 보면,
-    n개 블록짜리 ResNet에는 입력에서 출력까지 가는 길이 <strong>2<sup>n</sup>개</strong> 존재합니다.
+    그런데 애초에 “1001층을 훈련한다”는 말은 무슨 뜻일까요?
+    다음 절에서는 ResNet을 층이 쌓인 사슬이 아니라
+    <strong>수많은 얕은 네트워크의 모음</strong>으로 보는 관점을 살펴봅니다.
+    v2만의 이야기가 아니라 <strong>v1부터 성립하는 성질</strong>입니다.
   </p>
+</section>
+
+<!-- ============================================================ -->
+<section id="s7">
+  <h2><span class="secno">7</span>또 다른 관점 — ResNet은 얕은 네트워크들의 앙상블처럼 동작한다</h2>
+  <p>
+    지금까지 우리는 ResNet을 <strong>“층을 깊게 쌓은 사슬”</strong>로 봤습니다.
+    2016년 Veit 등의 후속 연구는 완전히 다른 그림을 제시했습니다.
+    잔차 블록을 사슬의 고리가 아니라 <strong>경로가 갈라지는 갈림길</strong>로 보면,
+    n개 블록짜리 ResNet에는 입력에서 출력까지 가는 길이 <strong>2<sup>n</sup>개</strong> 존재합니다.
+    그리고 이 관점은 ResNet이 <em>왜</em> 깊어져도 훈련되는지를
+    앞선 절들과는 또 다른 방식으로 설명해 줍니다.
+  </p>
+  <h3>왜 경로가 2<sup>n</sup>개인가</h3>
   <p>
     이유는 단순합니다. 잔차 블록은 <em>y</em> = <em>x</em> + <em>F(x)</em>,
     즉 신호가 블록마다 <strong>두 갈래로 갈라졌다가 덧셈에서 다시 합쳐집니다</strong>.
@@ -537,11 +552,51 @@
       <em>Residual Networks Behave Like Ensembles…</em>(앙상블<strong>처럼 동작한다</strong>)입니다.
     </p>
   </div>
+
+  <h3>v1도 앙상블처럼 동작하는가</h3>
+  <p>
+    그렇습니다. 오히려 <strong>이 연구가 실험한 대상이 v1</strong>이었습니다 —
+    CIFAR-10의 ResNet-110, ImageNet의 ResNet-50 모두 post-activation 구조입니다.
+    블록을 지워도 무너지지 않는다는 결과도 전부 v1에서 나왔습니다.
+  </p>
+  <p>
+    당연한 일입니다. <strong>갈림길은 덧셈에서 생기기 때문</strong>입니다.
+    BN과 ReLU가 conv 앞에 있는지 뒤에 있는지는 갈림길 개수와 아무 상관이 없습니다.
+    그래서 경로 수 2<sup>n</sup>도, 길이별 개수 <em>C(n, k)</em>도 v1과 v2가 똑같습니다.
+  </p>
+  <p>
+    다만 <strong>경로의 “깨끗함”</strong>이 다릅니다. 블록 하나의 야코비안을 비교해 보면:
+  </p>
+  <div class="formula-block">
+    <div class="fline">
+      v2: <span class="fpart">∂y/∂x</span> = <strong class="hl-one">I</strong> + ∂F
+      <span class="fnote">← 전개했을 때 순수한 항등 항 <strong class="hl-one">I</strong>가 그대로 남는다</span>
+    </div>
+    <div class="fline">
+      v1: <span class="fpart">∂y/∂x</span> = <em>D</em> ( <strong class="hl-one">I</strong> + ∂F )
+      <span class="fnote">← <em>D</em> = 덧셈 뒤 ReLU의 0/1 마스크</span>
+    </div>
+  </div>
+  <p>
+    v1은 블록마다 <em>D</em>가 앞에 곱해집니다. n개를 쌓으면 2<sup>n</sup>개 항 <strong>전부에</strong>
+    <em>D<sub>1</sub>D<sub>2</sub>⋯D<sub>n</sub></em>이 달라붙고,
+    그 결과 가장 짧고 중요한 경로 — 모든 블록을 건너뛰는 <strong>길이 0의 순수 shortcut</strong>조차
+    완전한 항등이 아니라 ReLU 마스크들의 곱이 됩니다.
+    항의 <em>개수</em>는 그대로인데 짧은 경로들이 조금씩 깎이는 셈입니다.
+  </p>
+  <p>
+    실무적으로 <em>D</em>는 λ &lt; 1 같은 스케일이 아니라 0/1 마스크라서,
+    100층대까지는 이 손실이 눈에 띄지 않습니다. v1 ResNet-110이 멀쩡히 훈련되는 이유입니다.
+    하지만 1000층이 되면 마스크의 곱이 누적되어 차이가 벌어지고,
+    그것이 <a href="#s6">6절</a>에서 본 1001층의 7.61% vs 4.92%입니다.
+    정리하면 <strong>앙상블처럼 동작하는 성질은 v1부터 있던 것이고,
+    v2는 그 앙상블의 짧은 경로들을 손상 없이 보존하는 개선</strong>입니다.
+  </p>
 </section>
 
 <!-- ============================================================ -->
 <section id="s8">
-  <h2><span class="secno">7</span>실제 구현 — PyTorch 코드로 확인하기</h2>
+  <h2><span class="secno">8</span>실제 구현 — PyTorch 코드로 확인하기</h2>
   <p>
     지금까지 본 모든 것이 실제 코드에서는 몇 줄로 표현됩니다. 아래는 사실상의 표준 구현인
     <a href="https://github.com/pytorch/vision/blob/main/torchvision/models/resnet.py" target="_blank" rel="noopener">torchvision의 <code>resnet.py</code></a>
@@ -653,7 +708,7 @@ logits = model(torch.randn(1, 3, 224, 224))   # → [1, 1000]</code></pre>
 
 <!-- ============================================================ -->
 <section id="s9">
-  <h2><span class="secno">8</span>정리 — 그리고 그 이후</h2>
+  <h2><span class="secno">9</span>정리 — 그리고 그 이후</h2>
   <ul class="summary-list">
     <li><strong>문제:</strong> plain 네트워크는 깊어지면 훈련 오류부터 나빠진다(열화 문제). 과적합이 아니라 최적화 실패다.</li>
     <li><strong>해법:</strong> 층이 목표 <em>H(x)</em> 대신 잔차 <em>F(x) = H(x) − x</em>를 배우게 하고, 출력을 <em>F(x) + x</em>로 만든다. 항등이 최적에 가까우면 가중치를 0으로 밀기만 하면 된다.</li>

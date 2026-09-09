@@ -11,8 +11,9 @@ ResNet(Deep Residual Learning)의 동작 원리를 **브라우저에서 직접 �
 3. **신호 전파 시뮬레이터** — 무작위 네트워크에서 실제 역전파를 수행해 plain(곱셈적)과 residual(덧셈적)의 그래디언트 전파를 비교. 초기화 배율·shortcut 스케일(λ) 실험
 4. **미니 학습 실험** — 같은 깊이의 plain vs residual 네트워크를 브라우저에서 실시간 훈련. 48층에서 plain이 무너지는 것을 직접 확인
 5. **아키텍처 탐색기** — ResNet-18/34/50/101/152 구조, Basic vs Bottleneck 블록 파라미터 비교, ImageNet 결과
-6. **ResNet v2** — pre-activation 블록 해부 다이어그램(순전파/역전파), shortcut 절제 실험(ablation), 1001층 훈련, 경로 펼쳐보기(2ⁿ개 경로)와 앙상블 관점
-7. **실제 구현** — torchvision `resnet.py` 코드 해설과 공개 구현체 링크
+6. **ResNet v2** — pre-activation 블록 해부 다이어그램(순전파/역전파), shortcut 절제 실험(ablation), 1001층 훈련
+7. **앙상블 관점** — 왜 경로가 2ⁿ개인지(경로 펼쳐보기), 경로 길이 분포 vs 그래디언트 기여, 앙상블 개념과 블록 삭제 실험, v1/v2 비교
+8. **실제 구현** — torchvision `resnet.py` 코드 해설과 공개 구현체 링크
 
 순수 HTML/CSS/JavaScript로 작성되었으며 외부 라이브러리 의존성이 없습니다.
 모든 시뮬레이션(역전파, 신경망 훈련)은 방문자의 브라우저에서 실시간으로 계산됩니다.
